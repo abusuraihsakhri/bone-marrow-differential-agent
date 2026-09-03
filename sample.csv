@@ -1,4 +1,8 @@
-case_id,patient_synthetic_id,metric_primary,metric_secondary,is_stat,status_flag
-CASE-001,SYNTH-01,25.4,14.2,True,DISCORDANT
-CASE-002,SYNTH-02,12.0,4.1,False,NORMAL
-CASE-003,SYNTH-03,32.0,18.5,True,SUSPICIOUS
+case_id,patient_age,core_cellularity_pct,peripheral_blood_blast_pct,blasts,promyelocytes,myelocytes,metamyelocytes,band_neutrophils,segmented_neutrophils,eosinophils,basophils,monocytes,pronormoblasts,basophilic_normoblasts,polychromatophilic_normoblasts,orthochromatophilic_normoblasts,lymphocytes,plasma_cells,ring_sideroblasts_pct,sf3b1_mutated,clinical_notes
+BM-NORM-001,45,55.0,0.0,5,10,40,60,70,115,15,5,10,5,15,65,35,45,5,0.0,False,Normal marrow aspirate 500-cell manual differential
+BM-MDSEB1-002,68,65.0,1.5,35,12,35,45,55,90,10,3,10,8,20,80,45,45,7,4.0,False,MDS with excess blasts 1 (MDS-IB1/EB-1 5-9% blasts)
+BM-MDSEB2-003,72,70.0,4.0,75,15,30,40,45,70,8,2,12,10,15,75,50,45,8,8.0,False,MDS with excess blasts 2 (MDS-IB2/EB-2 10-19% blasts)
+BM-AML-004,60,90.0,18.0,130,20,25,30,35,55,5,2,15,5,10,50,35,75,8,2.0,False,Acute myeloid leukemia (AML >=20% blasts threshold)
+BM-MYELOMA-005,65,80.0,0.0,8,8,30,40,50,85,10,3,10,5,12,60,35,44,100,1.0,False,Plasma cell myeloma (>=10% bone marrow plasma cells)
+BM-ERYTH-006,52,75.0,0.0,5,8,25,35,45,65,10,2,8,25,50,120,65,32,5,0.0,False,Erythroid hyperplasia with inverted M:E ratio
+BM-MDSRS-007,74,60.0,0.0,12,14,38,46,58,92,10,3,10,10,22,85,50,42,8,22.0,True,MDS with ring sideroblasts (SF3B1 mutated RS >=5%)

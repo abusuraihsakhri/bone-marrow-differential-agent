@@ -306,6 +306,21 @@ class TestReportFormattingAndCLI(unittest.TestCase):
         ])
         self.assertEqual(ret, 0)
 
+    def test_cli_batch_processing(self):
+        import os
+        import tempfile
+        with tempfile.TemporaryDirectory() as tmpdir:
+            out_file = os.path.join(tmpdir, "batch_out.csv")
+            ret = cli.main(["batch", "-i", "sample.csv", "-o", out_file])
+            self.assertEqual(ret, 0)
+            self.assertTrue(os.path.exists(out_file))
+            with open(out_file, "r", encoding="utf-8") as fp:
+                content = fp.read()
+                self.assertIn("BM-NORM-001", content)
+                self.assertIn("BM-AML-004", content)
+                self.assertIn("Acute Myeloid Leukemia", content)
+
 
 if __name__ == "__main__":
     unittest.main()
+

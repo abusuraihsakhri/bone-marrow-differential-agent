@@ -2,7 +2,7 @@
 """
 Command-Line Interface for Bone Marrow Differential & Hematopathology Agent
 ===========================================================================
-Supports interactive case input, direct argument specification, batch JSON/CSV processing,
+Supports interactive case input, direct argument specification, batch CSV/JSON processing,
 pre-configured demo scenarios, and structured JSON output.
 """
 
@@ -12,7 +12,8 @@ import argparse
 import csv
 import json
 import sys
-from typing import List, Optional
+from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from bone_marrow_differential import (
     BoneMarrowCellCounts,
@@ -169,10 +170,172 @@ def interactive_mode() -> int:
         return 1
 
 
+def process_batch_csv(input_path: str, output_path: Optional[str] = None) -> int:
+    """Processes batch CSV file containing bone marrow aspirate differential cases."""
+    in_file = Path(input_path)
+    if not in_file.exists():
+        print(f"Error: Input file not found: {input_path}", file=sys.stderr)
+        return 1
+
+    results: List[Dict[str, Any]] = []
+
+    with open(in_file, mode="r", encoding="utf-8-sig") as fp:
+        reader = csv.DictReader(fp)
+        for row_idx, row in enumerate(reader, start=1):
+            case_id = row.get("case_id") or f"CASE-{row_idx:03d}"
+            try:
+                age = int(float(row.get("patient_age") or row.get("age") or 50))
+            except (ValueError, TypeError):
+                age = 50
+
+            try:
+                cellularity = float(row.get("core_cellularity_pct") or row.get("cellularity") or 50.0)
+            except (ValueError, TypeError):
+                cellularity = 50.0
+
+            try:
+                pb_blast = float(row.get("peripheral_blood_blast_pct") or row.get("pb_blasts") or 0.0)
+            except (ValueError, TypeError):
+                pb_blast = 0.0
+
+            def _to_int(keys: List[str]) -> int:
+                for k in keys:
+                    v = row.get(k)
+                    if v is not None and v != "":
+                        try:
+                            return int(float(v))
+                        except (ValueError, TypeError):
+                            pass
+                return 0
+
+            blasts = _to_int(["blasts", "blast_count"])
+            promyelocytes = _to_int(["promyelocytes", "promyelo"])
+            myelocytes = _to_int(["myelocytes", "myelo"])
+            metamyelocytes = _to_int(["metamyelocytes", "metamyelo"])
+            band_neutrophils = _to_int(["band_neutrophils", "bands", "band_neutro"])
+            segmented_neutrophils = _to_int(["segmented_neutrophils", "segs", "seg_neutro", "neutrophils"])
+            eosinophils = _to_int(["eosinophils", "eos"])
+            basophils = _to_int(["basophils", "baso"])
+            monocytes = _to_int(["monocytes", "monos"])
+            pronormoblasts = _to_int(["pronormoblasts", "pronormo"])
+            basophilic_normoblasts = _to_int(["basophilic_normoblasts", "baso_normo"])
+            polychromatophilic_normoblasts = _to_int(["polychromatophilic_normoblasts", "poly_normo", "polychromatic_normoblasts"])
+            orthochromatophilic_normoblasts = _to_int(["orthochromatophilic_normoblasts", "ortho_normo", "orthochromatic_normoblasts"])
+            lymphocytes = _to_int(["lymphocytes", "lymphs"])
+            plasma_cells = _to_int(["plasma_cells", "plasma"])
+            megakaryocytes = _to_int(["megakaryocytes", "megas"])
+            histiocytes = _to_int(["histiocytes"])
+            mast_cells = _to_int(["mast_cells"])
+
+            counts = BoneMarrowCellCounts(
+                blasts=blasts,
+                promyelocytes=promyelocytes,
+                myelocytes=myelocytes,
+                metamyelocytes=metamyelocytes,
+                band_neutrophils=band_neutrophils,
+                segmented_neutrophils=segmented_neutrophils,
+                eosinophils=eosinophils,
+                basophils=basophils,
+                monocytes=monocytes,
+                pronormoblasts=pronormoblasts,
+                basophilic_normoblasts=basophilic_normoblasts,
+                polychromatophilic_normoblasts=polychromatophilic_normoblasts,
+                orthochromatophilic_normoblasts=orthochromatophilic_normoblasts,
+                lymphocytes=lymphocytes,
+                plasma_cells=plasma_cells,
+                megakaryocytes=megakaryocytes,
+                histiocytes=histiocytes,
+                mast_cells=mast_cells,
+            )
+
+            # Dysplasia & ring sideroblasts
+            def _to_float(keys: List[str]) -> float:
+                for k in keys:
+                    v = row.get(k)
+                    if v is not None and v != "":
+                        try:
+                            return float(v)
+                        except (ValueError, TypeError):
+                            pass
+                return 0.0
+
+            rs_pct = _to_float(["ring_sideroblasts_pct", "ring_sideroblasts", "rs_pct"])
+            sf3b1_raw = str(row.get("sf3b1_mutated", row.get("sf3b1", "false"))).lower()
+            sf3b1_mutated = sf3b1_raw in ("true", "1", "yes", "y", "positive")
+            erythroid_dysp = _to_float(["erythroid_dysplasia_pct", "erythroid_dysp"])
+            granulocytic_dysp = _to_float(["granulocytic_dysplasia_pct", "granulocytic_dysp"])
+            megakaryocytic_dysp = _to_float(["megakaryocytic_dysplasia_pct", "megakaryocytic_dysp"])
+
+            dysp = DysplasiaFeatures(
+                erythroid_dysplasia_pct=erythroid_dysp,
+                granulocytic_dysplasia_pct=granulocytic_dysp,
+                megakaryocytic_dysplasia_pct=megakaryocytic_dysp,
+                ring_sideroblasts_pct=rs_pct,
+                sf3b1_mutation_detected=sf3b1_mutated,
+            )
+
+            case = ClinicalCaseInput(
+                case_id=case_id,
+                patient_age=age,
+                counts=counts,
+                core_cellularity_pct=cellularity,
+                peripheral_blood_blast_pct=pb_blast,
+                dysplasia=dysp,
+            )
+
+            report = BoneMarrowDifferentialAnalyzer.analyze(case)
+
+            results.append({
+                "case_id": report.case_id,
+                "patient_age": report.patient_age,
+                "total_cells_counted": report.total_cells_counted,
+                "marrow_blast_pct": report.marrow_blast_pct,
+                "me_ratio": report.me_ratio,
+                "cellularity_observed_pct": report.cellularity.observed_cellularity_pct,
+                "cellularity_status": report.cellularity.status.value,
+                "dysplasia_degree": report.dysplasia_degree.value,
+                "primary_diagnostic_category": report.primary_diagnostic_category,
+                "subclassification": report.subclassification,
+                "ipss_r_blast_score_category": report.ipss_r_blast_score_category,
+                "critical_alerts": "; ".join(report.critical_alerts) if report.critical_alerts else "None",
+            })
+
+    if not results:
+        print("Warning: No rows processed from input file.", file=sys.stderr)
+        return 0
+
+    fieldnames = list(results[0].keys())
+
+    if output_path:
+        out_file = Path(output_path)
+        out_file.parent.mkdir(parents=True, exist_ok=True)
+        with open(out_file, mode="w", newline="", encoding="utf-8") as fp:
+            writer = csv.DictWriter(fp, fieldnames=fieldnames)
+            writer.writeheader()
+            writer.writerows(results)
+        print(f"Batch processing complete: {len(results)} cases analyzed -> {output_path}")
+    else:
+        writer = csv.DictWriter(sys.stdout, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(results)
+
+    return 0
+
+
 def main(argv: Optional[List[str]] = None) -> int:
     parser = argparse.ArgumentParser(
         description="Bone Marrow Differential & Hematopathology Diagnostic Engine (WHO 2022 / ICC)"
     )
+
+    # Subcommands
+    subparsers = parser.add_subparsers(dest="command", help="Available commands")
+
+    # Batch subcommand
+    batch_parser = subparsers.add_parser("batch", help="Batch process bone marrow differential CSV records")
+    batch_parser.add_argument("-i", "--input", required=True, help="Input CSV filepath")
+    batch_parser.add_argument("-o", "--output", help="Output CSV filepath (defaults to stdout)")
+
+    # Standard options
     parser.add_argument("--interactive", "-i", action="store_true", help="Launch interactive differential entry mode")
     parser.add_argument("--demo", choices=["normal", "aml", "mds_rs", "aplastic", "all"], help="Run benchmark demo scenario")
     parser.add_argument("--case-id", default="CASE-001", help="Clinical case identifier")
@@ -202,7 +365,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--erythroid-dysp", type=float, default=0.0, help="Erythroid dysplasia percentage")
     parser.add_argument("--granulocytic-dysp", type=float, default=0.0, help="Granulocytic dysplasia percentage")
     parser.add_argument("--megakaryocytic-dysp", type=float, default=0.0, help="Megakaryocytic dysplasia percentage")
-    parser.add_argument("--ring-sideroblasts", type=float, default=0.0, help="Ring sideroblasts % of erythroid cells")
+    parser.add_argument("--ring-sideroblasts", type=float, default=0.0, help="Ring sideroblasts %% of erythroid cells")
     parser.add_argument("--sf3b1", action="store_true", help="SF3B1 somatic mutation detected")
     parser.add_argument("--auer-rods", action="store_true", help="Auer rods present on morphological review")
     parser.add_argument("--genetics", nargs="*", default=[], help="Cytogenetic findings / somatic mutations")
@@ -213,6 +376,9 @@ def main(argv: Optional[List[str]] = None) -> int:
     parser.add_argument("--file", "-f", help="Load case JSON file")
 
     args = parser.parse_args(argv)
+
+    if args.command == "batch":
+        return process_batch_csv(args.input, args.output)
 
     if args.interactive:
         return interactive_mode()
