@@ -1,217 +1,97 @@
-# Bone Marrow Differential & Hematopathology Agent
+# Bone Marrow Differential
 
-> **Domain:** Hematopathology, Bone Marrow Morphologic Differential, & Myeloid Neoplasm Diagnostics  
-> **Standards:** WHO Classification of Haematolymphoid Tumours (5th Edition, 2022) / International Consensus Classification (ICC 2022) / IPSS-R Criteria
+Bone marrow aspirate differential calculator and conservative hematopathology interpretation aid. It computes cell percentages, marrow and non-erythroid blast percentages, the myeloid:erythroid ratio, an approximate age-referenced cellularity description, and pattern-level review flags from entered data.
 
-<div align="center">
+The project deliberately does **not** treat a differential count as a complete diagnosis. MDS, CMML, plasma-cell neoplasms, aplastic anemia, and genetically defined AML entities require clinical, hematologic, morphologic, cytogenetic, and/or molecular information beyond the fields represented here.
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-![Python](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB.svg?logo=python&logoColor=white)
-![Tests](https://img.shields.io/badge/Tests-Pytest%2032%20passed-success.svg)
-![Standards](https://img.shields.io/badge/Standards-WHO%205th%20%2F%20ICC%202022-brightgreen.svg)
+## Main features
 
-</div>
+- Browser interface using the same Python engine as the CLI via Pyodide; no application server is required.
+- Light theme by default with a dark-mode option, responsive layout, compact differential entry, and JSON export.
+- CLI for single cases, interactive entry, demonstration cases, and CSV batch processing.
+- Strict input checks for negative/non-integer cell counts, invalid percentages, and malformed batch values.
+- Separate WHO-HAEM5 and ICC 2022 interpretation notes where terminology or blast thresholds differ.
+- Conservative flags for high blast percentages, dysplasia, plasmacytosis, severe hypocellularity, and M:E-ratio shifts without assigning unsupported disease diagnoses.
 
----
+## Browser application
 
-## 📖 Overview
+GitHub Pages deployment is automated from `master` by `.github/workflows/pages.yml`. The live link is added here only after the deployed URL has been verified.
 
-**Bone Marrow Differential Agent** is a specialized clinical hematopathology diagnostic engine and differential analysis pipeline. It evaluates manual 500-cell bone marrow aspirate differentials, calculates myeloid-to-erythroid (M:E) ratios, assesses age-adjusted core biopsy cellularity, quantifies dysplasia across lineages, evaluates Perls' Prussian blue iron stores and ring sideroblasts, and applies WHO 5th Edition (2022) / International Consensus Classification (ICC 2022) criteria for myeloid and plasma cell neoplasms.
+The browser downloads Pyodide and `bone_marrow_differential.py`, then performs analysis locally. Case inputs are not sent to this repository or to an application backend. The interface stores only the selected light/dark theme in browser local storage.
 
----
+## CLI
 
-## 🔬 Hematopathology & Mathematical Formulations
-
-### 1. Manual 500-Cell Aspirate Differential Standard
-A manual aspirate smear count of at least **500 nucleated cells** is the international standard to ensure statistical reliability when assessing low-frequency populations such as blasts and plasma cells:
-
-$$\text{Total Nucleated Cells} = \sum_{k} \text{Cell}_k \ge 500$$
-
-### 2. Blast Percentage Calculations
-- **Total Nucleated Cell Blast Percentage:**
-  $$\text{Blast } \% = \left( \frac{\text{Blasts}}{\text{Total Nucleated Cells}} \right) \times 100$$
-
-- **Non-Erythroid Blast Percentage (FAB Criteria):**
-  $$\text{Non-Erythroid Blast } \% = \left( \frac{\text{Blasts}}{\text{Total Nucleated Cells} - \text{Total Erythroid Precursors}} \right) \times 100$$
-
-### 3. Myeloid-to-Erythroid (M:E) Ratio
-The ratio of total granulocytic/myeloid lineage precursors to nucleated erythroid precursors:
-
-$$\text{M:E Ratio} = \frac{\text{Blasts} + \text{Promyelocytes} + \text{Myelocytes} + \text{Metamyelocytes} + \text{Bands} + \text{Segs} + \text{Eosinophils} + \text{Basophils}}{\text{Pronormoblasts} + \text{Basophilic Normoblasts} + \text{Polychromatophilic Normoblasts} + \text{Orthochromatophilic Normoblasts}}$$
-
-- **Normal Adult Range:** `1.5:1` to `3.5:1` (typically `2:1` to `4:1`)
-- **M:E > 4.5:1:** Myeloid (granulocytic) hyperplasia (infection, leukemoid reaction, CML, G-CSF)
-- **M:E < 1.2:1:** Erythroid hyperplasia (hemolysis, hemorrhage recovery, erythropoietin therapy, thalassemia)
-
-### 4. Age-Adjusted Core Cellularity
-Expected core biopsy cellularity decreases with age according to the standard clinical regression:
-
-$$\text{Expected Cellularity } (\%) = 100 - \text{Age (years)} \quad (\pm 15\% \text{ normal tolerance window})$$
-- *Pediatric adjustments:* Neonates $\approx 95-100\%$, infants/young children $\approx 80-90\%$, minimum floor $\ge 10\%$.
-
-### 5. WHO 5th Edition (2022) / ICC Diagnostic Blast Cutoffs
-
-| Diagnostic Category | Marrow Blast % | Peripheral Blood Blast % | Defining Criteria & Molecular Genetics |
-|:---|:---:|:---:|:---|
-| **Normal Bone Marrow** | $< 5\%$ | $0\%$ | Normocellular for age, normal M:E ratio ($2:1$ to $4:1$), no dysplasia |
-| **MDS with Low Blasts (MDS-LB / MDS-SLD / MDS-MLD)** | $< 5\%$ | $< 2\%$ | Significant dysplasia ($\ge 10\%$) in 1 (SLD) or $\ge 2$ (MLD) lineages |
-| **MDS with Ring Sideroblasts (MDS-RS)** | $< 5\%$ | $< 2\%$ | $\ge 15\%$ ring sideroblasts, OR $\ge 5\%$ with *SF3B1* somatic mutation |
-| **MDS with Increased Blasts 1 (MDS-IB1 / MDS-EB-1)** | $5.0\% - 9.9\%$ | $2.0\% - 4.9\%$ | Absence of Auer rods or AML-defining genetic lesions |
-| **MDS with Increased Blasts 2 (MDS-IB2 / MDS-EB-2)** | $10.0\% - 19.9\%$ | $5.0\% - 19.9\%$ | Or presence of Auer rods regardless of blast count |
-| **Acute Myeloid Leukemia (AML)** | $\ge 20\%$ | $\ge 20\%$ | Morphologic blast threshold for AML-NOS or AML-MR |
-| **AML with Defining Recurrent Genetics** | Any / $\ge 10\%$ | Any / $\ge 10\%$ | *PML::RARA*, *RUNX1::RUNX1T1*, *CBFB::MYH11*, *KMT2A*, *MECOM*, *NPM1* |
-| **Plasma Cell Myeloma** | $\ge 10\%$ | N/A | Bone marrow clonal plasma cells $\ge 10\%$ ($\ge 60\%$ is myeloma-defining biomarker) |
-
-### 6. Reference Differential Ranges (Adult Bone Marrow Aspirate)
-
-| Cell Type | Reference Percentage Range (%) |
-|:---|:---:|
-| **Myeloblasts** | 0.5 – 3.0% |
-| **Promyelocytes** | 1.0 – 5.0% |
-| **Myelocytes** | 5.0 – 15.0% |
-| **Metamyelocytes** | 10.0 – 20.0% |
-| **Band Neutrophils** | 10.0 – 20.0% |
-| **Segmented Neutrophils** | 10.0 – 30.0% |
-| **Eosinophils & Precursors** | 1.0 – 5.0% |
-| **Basophils** | 0.1 – 1.0% |
-| **Monocytes** | 1.0 – 4.0% |
-| **Nucleated Erythroid Precursors (total)** | 15.0 – 30.0% |
-| **Lymphocytes** | 5.0 – 15.0% |
-| **Plasma Cells** | 0.5 – 3.0% |
-
----
-
-## 💻 CLI Quickstart & Usage
-
-The command-line interface provides single-case analysis, batch CSV processing, and built-in benchmark demos.
-
-### 1. Batch CSV Processing
-Process an entire cohort of aspirate differentials from CSV and write structured diagnostic sign-out reports:
+Requires Python 3.9 or newer and has no runtime Python dependencies.
 
 ```bash
-# Process batch CSV and write to output file
-python cli.py batch -i sample.csv -o out_results.csv
-
-# Output directly to stdout
-python cli.py batch -i sample.csv
+python -m pip install .
+bone-marrow-differential --demo normal
+bone-marrow-differential --case-id CASE-42 --age 64 --blasts 35 --segs 315 --poly-normo 100 --lymphocytes 50
+bone-marrow-differential batch -i sample.csv -o results.csv
 ```
 
-### 2. Benchmark Demo Scenarios
-Run pre-configured, validated clinical benchmarks:
+For JSON output:
 
 ```bash
-python cli.py --demo normal      # Normocellular unremarkable marrow
-python cli.py --demo aml         # Acute Myeloid Leukemia with NPM1/FLT3 mutations
-python cli.py --demo mds_rs      # MDS with Ring Sideroblasts and SF3B1 mutation
-python cli.py --demo aplastic    # Severe aplastic anemia pattern
-python cli.py --demo all         # Run all benchmark scenarios
+bone-marrow-differential --case-id CASE-42 --age 64 --blasts 35 --segs 315 --poly-normo 100 --lymphocytes 50 --json
 ```
 
-### 3. Direct Case Evaluation
-Evaluate a case with specific cell counts and export as structured JSON or clinical text:
+The CLI does not invent a normal differential when no counts are supplied; missing input is treated as an argument error.
 
-```bash
-python cli.py \
-  --case-id "BM-2026-0042" \
-  --age 64 \
-  --cellularity 85.0 \
-  --blasts 125 \
-  --promyelocytes 20 \
-  --myelocytes 30 \
-  --metamyelocytes 35 \
-  --bands 40 \
-  --segs 70 \
-  --poly-normo 60 \
-  --ortho-normo 40 \
-  --lymphocytes 50 \
-  --plasma-cells 10 \
-  --json
-```
-
-### 4. Interactive Mode
-Launch the step-by-step interactive prompt for aspirate counts:
-
-```bash
-python cli.py --interactive
-```
-
----
-
-## 🐍 Python API Quickstart
+## Python API
 
 ```python
 from bone_marrow_differential import (
     BoneMarrowCellCounts,
     BoneMarrowDifferentialAnalyzer,
     ClinicalCaseInput,
-    DysplasiaFeatures,
-    format_clinical_report,
 )
 
-# 1. Enter 500-cell aspirate differential counts
-counts = BoneMarrowCellCounts(
-    blasts=35,              # 7.0% blasts
-    promyelocytes=12,
-    myelocytes=35,
-    metamyelocytes=45,
-    band_neutrophils=55,
-    segmented_neutrophils=90,
-    eosinophils=10,
-    basophils=3,
-    monocytes=10,
-    pronormoblasts=8,
-    basophilic_normoblasts=20,
-    polychromatophilic_normoblasts=80,
-    orthochromatophilic_normoblasts=45,
-    lymphocytes=45,
-    plasma_cells=7,
-)
-
-# 2. Build clinical case input
 case = ClinicalCaseInput(
-    case_id="BM-MDS-001",
-    patient_age=68,
-    counts=counts,
-    core_cellularity_pct=65.0,
-    peripheral_blood_blast_pct=1.5,
-    dysplasia=DysplasiaFeatures(erythroid_dysplasia_pct=15.0),
+    case_id="BM-001",
+    patient_age=64,
+    counts=BoneMarrowCellCounts(
+        blasts=35,
+        segmented_neutrophils=315,
+        polychromatophilic_normoblasts=100,
+        lymphocytes=50,
+    ),
+    core_cellularity_pct=60,
 )
 
-# 3. Analyze against WHO 2022 / ICC criteria
 report = BoneMarrowDifferentialAnalyzer.analyze(case)
-
-# 4. Inspect report properties
-print(f"Total Count: {report.total_cells_counted}")
-print(f"Marrow Blasts: {report.marrow_blast_pct}%")
-print(f"M:E Ratio: {report.me_ratio}:1")
-print(f"Diagnosis: {report.primary_diagnostic_category}")
-print(f"Subclass: {report.subclassification}")
-print(f"IPSS-R Stratum: {report.ipss_r_blast_score_category}")
-
-# 5. Format formatted sign-out report
-print(format_clinical_report(report))
+print(report.to_json())
 ```
 
----
+## Interpretation scope
 
-## 🧪 Testing & Verification
+The calculation engine uses entered values as observations, not as proof that diagnostic prerequisites have been met. In particular:
 
-Run the comprehensive unit test suite:
+- Dysplasia alone does not establish MDS; cytopenia and exclusion/integrated criteria are required.
+- A high marrow plasma-cell percentage does not establish multiple myeloma without clonality and a myeloma-defining event.
+- Severe marrow hypocellularity does not establish aplastic anemia without the required peripheral-blood findings and exclusion of alternative causes.
+- Monocytosis does not establish CMML without the required peripheral-blood proportion/persistence and supporting or clonal criteria.
+- WHO-HAEM5 and ICC 2022 are not collapsed into one AML/MDS threshold rule.
+- The displayed IPSS-R blast stratum is reference information only; it is not a complete IPSS-R score.
+
+Outputs are intended for research, education, calculation support, and expert review—not as treatment recommendations or autonomous sign-out.
+
+## Development and testing
 
 ```bash
-python -m pytest -p no:zarr -v
+python -m pip install . pytest
+python -m pytest -q
+python -m compileall -q bone_marrow_differential.py cli.py marrow_mind.py
+bone-marrow-differential --demo normal
+bone-marrow-differential batch -i sample.csv -o out_smoke.csv
 ```
 
-Execute the batch CLI smoke verification:
+Continuous integration tests Python 3.10, 3.11, and 3.12. A browser smoke check loads the page in headless Chrome, waits for Pyodide, executes the Python engine, and verifies a rendered result.
 
-```bash
-python cli.py batch -i sample.csv -o out_smoke.csv
-# Verify and clean up
-python -c "import os; assert os.path.exists('out_smoke.csv'); os.remove('out_smoke.csv')"
-```
+## Technology and browser support
 
----
+The maintained runtime consists of standard-library Python, HTML, CSS, JavaScript, and Pyodide 314.0.7. Current Chromium-, Firefox-, and WebKit-based browsers with WebAssembly support are expected to work. JavaScript and network access to the pinned Pyodide CDN are required for the browser application; the CLI does not require network access.
 
-## 📄 License
+## License
 
-MIT License. See [LICENSE](LICENSE) for details.
+MIT License. See [LICENSE](LICENSE).

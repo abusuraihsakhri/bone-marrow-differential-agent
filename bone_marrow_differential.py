@@ -1,25 +1,15 @@
-"""
-Bone Marrow Differential & Hematopathology Analysis Engine
-==========================================================
-Comprehensive hematopathology system for 500-cell aspirate differential counts,
-Myeloid-to-Erythroid (M:E) ratio computation, age-adjusted core biopsy cellularity,
-Perls' Prussian blue iron stores/ring sideroblast quantification, dysplasia scoring,
-and WHO 2022 / ICC hematologic neoplasm diagnostic classification.
+"""Bone marrow differential calculations with conservative interpretation flags.
 
-Standards & Criteria:
-- WHO Classification of Haematolymphoid Tumours (5th Edition, 2022)
-- International Consensus Classification (ICC 2022)
-- International Prognostic Scoring System (IPSS-R / IPSS-M) Blast Strata
-- Standard Hematopathology Manual Differential Count Benchmarks (500-cell standard)
+The module is an interpretation aid, not a standalone diagnostic or treatment
+system. Disease classification requires integrated clinical, blood, morphology,
+flow, cytogenetic and/or molecular data that are not fully represented here.
 """
-
 from __future__ import annotations
 
 import json
-import math
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from enum import Enum
-from typing import Dict, Any, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional
 
 
 class Lineage(str, Enum):
@@ -42,27 +32,22 @@ class CellularityStatus(str, Enum):
 
 class DysplasiaDegree(str, Enum):
     NONE = "No Significant Dysplasia (<10%)"
-    SINGLE_LINEAGE = "Single Lineage Dysplasia (SLD, >=10% in 1 lineage)"
-    MULTILINEAGE = "Multilineage Dysplasia (MLD, >=10% in >=2 lineages)"
+    SINGLE_LINEAGE = "Single Lineage Dysplasia (>=10% in 1 lineage)"
+    MULTILINEAGE = "Multilineage Dysplasia (>=10% in >=2 lineages)"
 
 
 class IronStoreGrade(int, Enum):
-    GRADE_0 = 0  # None / Absent
-    GRADE_1 = 1  # Severely decreased
-    GRADE_2 = 2  # Slightly decreased
-    GRADE_3 = 3  # Normal
-    GRADE_4 = 4  # Moderately increased
-    GRADE_5 = 5  # Markedly increased
-    GRADE_6 = 6  # Very large clumps / massive iron overload
+    GRADE_0 = 0
+    GRADE_1 = 1
+    GRADE_2 = 2
+    GRADE_3 = 3
+    GRADE_4 = 4
+    GRADE_5 = 5
+    GRADE_6 = 6
 
 
 @dataclass
 class BoneMarrowCellCounts:
-    """
-    Detailed manual differential count of nucleated bone marrow cells.
-    Recommended standard count is 500 nucleated cells from aspirate smears.
-    """
-    # Granulocytic / Myeloid lineage
     blasts: int = 0
     promyelocytes: int = 0
     myelocytes: int = 0
@@ -71,54 +56,37 @@ class BoneMarrowCellCounts:
     segmented_neutrophils: int = 0
     eosinophils: int = 0
     basophils: int = 0
-
-    # Monocytic lineage
     monocytes: int = 0
-
-    # Erythroid lineage
     pronormoblasts: int = 0
     basophilic_normoblasts: int = 0
     polychromatophilic_normoblasts: int = 0
     orthochromatophilic_normoblasts: int = 0
-
-    # Lymphoid & Plasma cells
     lymphocytes: int = 0
     plasma_cells: int = 0
-
-    # Other lineages
     megakaryocytes: int = 0
     histiocytes: int = 0
     mast_cells: int = 0
     other_cells: int = 0
 
     def total_count(self) -> int:
-        """Returns total nucleated cell count."""
-        return (
-            self.blasts + self.promyelocytes + self.myelocytes + self.metamyelocytes +
-            self.band_neutrophils + self.segmented_neutrophils + self.eosinophils +
-            self.basophils + self.monocytes + self.pronormoblasts +
-            self.basophilic_normoblasts + self.polychromatophilic_normoblasts +
-            self.orthochromatophilic_normoblasts + self.lymphocytes +
-            self.plasma_cells + self.megakaryocytes + self.histiocytes +
-            self.mast_cells + self.other_cells
-        )
+        return sum(self.__dict__.values())
 
     def total_granulocytic(self) -> int:
-        """
-        Total myeloid/granulocytic cells including precursors:
-        Blasts (myeloid), Promyelocytes, Myelocytes, Metamyelocytes, Bands, Segs, Eosinophils, Basophils.
-        """
-        return (
-            self.blasts + self.promyelocytes + self.myelocytes + self.metamyelocytes +
-            self.band_neutrophils + self.segmented_neutrophils + self.eosinophils +
-            self.basophils
+        return sum(
+            getattr(self, name)
+            for name in (
+                "blasts", "promyelocytes", "myelocytes", "metamyelocytes",
+                "band_neutrophils", "segmented_neutrophils", "eosinophils", "basophils",
+            )
         )
 
     def total_erythroid(self) -> int:
-        """Total nucleated erythroid precursors."""
-        return (
-            self.pronormoblasts + self.basophilic_normoblasts +
-            self.polychromatophilic_normoblasts + self.orthochromatophilic_normoblasts
+        return sum(
+            getattr(self, name)
+            for name in (
+                "pronormoblasts", "basophilic_normoblasts",
+                "polychromatophilic_normoblasts", "orthochromatophilic_normoblasts",
+            )
         )
 
     def total_monocytic(self) -> int:
@@ -128,62 +96,47 @@ class BoneMarrowCellCounts:
         return self.lymphocytes + self.plasma_cells
 
     def blast_percentage(self) -> float:
-        """Blast percentage of total nucleated bone marrow cells."""
-        tot = self.total_count()
-        if tot == 0:
-            return 0.0
-        return round((self.blasts / tot) * 100.0, 2)
+        total = self.total_count()
+        return round(self.blasts / total * 100, 2) if total else 0.0
 
     def non_erythroid_blast_percentage(self) -> float:
-        """
-        Blast percentage of non-erythroid nucleated cells (FAB criteria).
-        Formula: Blasts / (Total Cells - Total Erythroid) * 100
-        """
-        non_erythroid_total = self.total_count() - self.total_erythroid()
-        if non_erythroid_total <= 0:
-            return 0.0
-        return round((self.blasts / non_erythroid_total) * 100.0, 2)
+        denominator = self.total_count() - self.total_erythroid()
+        return round(self.blasts / denominator * 100, 2) if denominator > 0 else 0.0
 
     def myeloid_to_erythroid_ratio(self) -> float:
-        """
-        Myeloid to Erythroid (M:E) Ratio.
-        Normal adult reference range is typically 1.5:1 to 3.5:1 (or 2.0 to 4.0:1).
-        """
         erythroid = self.total_erythroid()
         if erythroid == 0:
-            return float("inf") if self.total_granulocytic() > 0 else 0.0
+            return float("inf") if self.total_granulocytic() else 0.0
         return round(self.total_granulocytic() / erythroid, 2)
 
     def percentages(self) -> Dict[str, float]:
-        """Calculates percentage for every counted cell category."""
-        tot = self.total_count()
-        if tot == 0:
-            return {k: 0.0 for k in self.__dict__.keys()}
-        return {
-            k: round((v / tot) * 100.0, 2)
-            for k, v in self.__dict__.items()
-            if isinstance(v, (int, float))
-        }
+        total = self.total_count()
+        if not total:
+            return {name: 0.0 for name in self.__dict__}
+        return {name: round(value / total * 100, 2) for name, value in self.__dict__.items()}
 
     def validate(self) -> List[str]:
-        """Validates count entries for clinical consistency and adequacy."""
-        issues = []
-        for k, v in self.__dict__.items():
-            if isinstance(v, (int, float)) and v < 0:
-                issues.append(f"Negative count not permitted for {k}: {v}")
-        tot = self.total_count()
-        if tot == 0:
-            issues.append("Total nucleated cell count is 0; at least 100 cells required for differential.")
-        elif tot < 200:
-            issues.append(f"Count of {tot} cells is below standard minimal threshold (200-500 cells recommended).")
-        elif tot < 500:
-            issues.append(f"Count of {tot} cells is acceptable but below optimal 500-cell aspirate standard.")
+        issues: List[str] = []
+        for name, value in self.__dict__.items():
+            if isinstance(value, bool) or not isinstance(value, int):
+                issues.append(f"Count for {name} must be an integer, got {value!r}")
+            elif value < 0:
+                issues.append(f"Negative count not permitted for {name}: {value}")
+        total = self.total_count()
+        if total == 0:
+            issues.append("Total nucleated cell count is 0; enter a marrow differential before analysis.")
+        elif total < 200:
+            issues.append(
+                f"Count of {total} cells is below the usual minimum for a reliable marrow differential; "
+                "500 nucleated cells are preferred when material permits."
+            )
+        elif total < 500:
+            issues.append(f"Count of {total} cells is below the preferred 500-cell marrow differential standard.")
         return issues
 
 
 @dataclass
 class CellularityAssessment:
-    """Age-adjusted core biopsy cellularity analysis."""
     patient_age: int
     observed_cellularity_pct: float
     expected_cellularity_pct: float = field(init=False)
@@ -192,94 +145,99 @@ class CellularityAssessment:
     status: CellularityStatus = field(init=False)
     interpretation: str = field(init=False)
 
-    def __post_init__(self):
-        if not (0 <= self.patient_age <= 125):
+    def __post_init__(self) -> None:
+        if not 0 <= self.patient_age <= 125:
             raise ValueError(f"Patient age must be between 0 and 125, got {self.patient_age}")
-        if not (0.0 <= self.observed_cellularity_pct <= 100.0):
-            raise ValueError(f"Cellularity percentage must be between 0 and 100, got {self.observed_cellularity_pct}")
-
-        # Standard rule: Expected cellularity (%) = 100 - age
-        # Pediatric adjustment: neonates ~ 100%, young infants ~ 80-90%
+        if not 0 <= self.observed_cellularity_pct <= 100:
+            raise ValueError("Cellularity percentage must be between 0 and 100")
         if self.patient_age < 2:
-            self.expected_cellularity_pct = 95.0
+            expected = 95.0
         elif self.patient_age < 10:
-            self.expected_cellularity_pct = 85.0
+            expected = 85.0
         else:
-            self.expected_cellularity_pct = max(10.0, float(100 - self.patient_age))
-
-        # Normal standard window is expected +/- 15% (bounded between 5% and 95%)
-        self.lower_normal_limit_pct = max(5.0, self.expected_cellularity_pct - 15.0)
-        self.upper_normal_limit_pct = min(95.0, self.expected_cellularity_pct + 15.0)
-
-        # Classification
-        if self.observed_cellularity_pct < 10.0:
+            expected = max(10.0, float(100 - self.patient_age))
+        self.expected_cellularity_pct = expected
+        self.lower_normal_limit_pct = max(5.0, expected - 15)
+        self.upper_normal_limit_pct = min(95.0, expected + 15)
+        observed = self.observed_cellularity_pct
+        if observed < 10:
             self.status = CellularityStatus.SEVERELY_HYPOCELLULAR
-            self.interpretation = f"Severe hypocellularity ({self.observed_cellularity_pct}%). Evaluate for aplastic anemia or profound hypoplasia."
-        elif self.observed_cellularity_pct < self.lower_normal_limit_pct:
+        elif observed < self.lower_normal_limit_pct:
             self.status = CellularityStatus.HYPOCELLULAR
-            self.interpretation = f"Hypocellular for age {self.patient_age} (observed: {self.observed_cellularity_pct}%, expected: {self.expected_cellularity_pct}%)."
-        elif self.observed_cellularity_pct > min(95.0, self.upper_normal_limit_pct + 15.0):
+        elif observed > min(95, self.upper_normal_limit_pct + 15):
             self.status = CellularityStatus.SEVERELY_HYPERCELLULAR
-            self.interpretation = f"Marked hypercellularity ({self.observed_cellularity_pct}%). High suspicion for marrow proliferation or leukemic infiltration."
-        elif self.observed_cellularity_pct > self.upper_normal_limit_pct:
+        elif observed > self.upper_normal_limit_pct:
             self.status = CellularityStatus.HYPERCELLULAR
-            self.interpretation = f"Hypercellular for age {self.patient_age} (observed: {self.observed_cellularity_pct}%, expected: {self.expected_cellularity_pct}%)."
         else:
             self.status = CellularityStatus.NORMOCELLULAR
-            self.interpretation = f"Normocellular marrow for age {self.patient_age} (observed {self.observed_cellularity_pct}% within {self.lower_normal_limit_pct:.0f}-{self.upper_normal_limit_pct:.0f}%)."
+        self.interpretation = (
+            f"Observed cellularity {observed:.1f}% is {self.status.value.lower()} relative to an "
+            f"approximate age-based reference of {expected:.1f}% "
+            f"({self.lower_normal_limit_pct:.0f}-{self.upper_normal_limit_pct:.0f}% reference window)."
+        )
 
 
 @dataclass
 class DysplasiaFeatures:
-    """Dysplasia assessment across 3 main lineages."""
-    erythroid_dysplasia_pct: float = 0.0  # Nuclear budding, multinuclearity, ring sideroblasts, megaloblastoid
-    granulocytic_dysplasia_pct: float = 0.0  # Hypogranulation, pseudo-Pelger-Huet, hypersegmentation
-    megakaryocytic_dysplasia_pct: float = 0.0  # Micromegakaryocytes, multinucleated/separated lobes
-
-    # Dysplastic qualitative findings
+    erythroid_dysplasia_pct: float = 0.0
+    granulocytic_dysplasia_pct: float = 0.0
+    megakaryocytic_dysplasia_pct: float = 0.0
     auer_rods_present: bool = False
-    ring_sideroblasts_pct: float = 0.0  # % of erythroid precursors
+    ring_sideroblasts_pct: float = 0.0
     sf3b1_mutation_detected: bool = False
 
+    def validate(self) -> List[str]:
+        issues = []
+        for name in (
+            "erythroid_dysplasia_pct", "granulocytic_dysplasia_pct",
+            "megakaryocytic_dysplasia_pct", "ring_sideroblasts_pct",
+        ):
+            value = getattr(self, name)
+            if not 0 <= value <= 100:
+                issues.append(f"{name} must be between 0 and 100, got {value}")
+        return issues
+
     def dysplastic_lineages_count(self) -> int:
-        """Significant dysplasia requires >= 10% morphologically abnormal cells in that lineage."""
-        count = 0
-        if self.erythroid_dysplasia_pct >= 10.0 or (self.ring_sideroblasts_pct >= 15.0 or (self.sf3b1_mutation_detected and self.ring_sideroblasts_pct >= 5.0)):
-            count += 1
-        if self.granulocytic_dysplasia_pct >= 10.0:
-            count += 1
-        if self.megakaryocytic_dysplasia_pct >= 10.0:
-            count += 1
-        return count
+        return sum(
+            value >= 10
+            for value in (
+                self.erythroid_dysplasia_pct,
+                self.granulocytic_dysplasia_pct,
+                self.megakaryocytic_dysplasia_pct,
+            )
+        )
 
     def get_dysplasia_degree(self) -> DysplasiaDegree:
-        cnt = self.dysplastic_lineages_count()
-        if cnt >= 2:
-            return DysplasiaDegree.MULTILINEAGE
-        elif cnt == 1:
-            return DysplasiaDegree.SINGLE_LINEAGE
-        return DysplasiaDegree.NONE
+        count = self.dysplastic_lineages_count()
+        return (
+            DysplasiaDegree.MULTILINEAGE if count >= 2
+            else DysplasiaDegree.SINGLE_LINEAGE if count == 1
+            else DysplasiaDegree.NONE
+        )
 
 
 @dataclass
 class ClinicalCaseInput:
-    """Full clinical case input parameters for bone marrow evaluation."""
     case_id: str
     patient_age: int
     counts: BoneMarrowCellCounts
     core_cellularity_pct: float = 50.0
     peripheral_blood_blast_pct: float = 0.0
-    peripheral_blood_monocyte_abs_k_ul: float = 0.5  # x10^9/L or k/uL
+    peripheral_blood_monocyte_abs_k_ul: float = 0.5
     dysplasia: DysplasiaFeatures = field(default_factory=DysplasiaFeatures)
     iron_store_grade: Optional[IronStoreGrade] = IronStoreGrade.GRADE_3
     cytogenetics_or_mutations: List[str] = field(default_factory=list)
     flow_cytometry_markers: Dict[str, str] = field(default_factory=dict)
     clinical_history: str = ""
+    cytopenia_documented: Optional[bool] = None
+    persistent_pb_monocytosis_documented: Optional[bool] = None
+    plasma_cell_clonality_documented: Optional[bool] = None
+    myeloma_defining_event_documented: Optional[bool] = None
+    aplastic_anemia_pb_criteria_documented: Optional[bool] = None
 
 
 @dataclass
 class BoneMarrowReport:
-    """Comprehensive diagnostic and analytical report."""
     case_id: str
     patient_age: int
     total_cells_counted: int
@@ -296,244 +254,242 @@ class BoneMarrowReport:
     critical_alerts: List[str]
     advisory_recommendations: List[str]
     differential_percentages: Dict[str, float]
+    who5_interpretation: str = ""
+    icc2022_interpretation: str = ""
+    interpretation_limitations: List[str] = field(default_factory=list)
 
     def to_dict(self) -> Dict[str, Any]:
-        d = asdict(self)
-        d["cellularity"]["status"] = self.cellularity.status.value
-        d["dysplasia_degree"] = self.dysplasia_degree.value
-        return d
+        data = asdict(self)
+        data["cellularity"]["status"] = self.cellularity.status.value
+        data["dysplasia_degree"] = self.dysplasia_degree.value
+        if self.me_ratio == float("inf"):
+            data["me_ratio"] = None
+        return data
 
     def to_json(self, indent: int = 2) -> str:
-        return json.dumps(self.to_dict(), indent=indent)
+        return json.dumps(self.to_dict(), indent=indent, allow_nan=False)
 
 
 class BoneMarrowDifferentialAnalyzer:
-    """
-    Expert Analyzer implementing WHO 5th Ed (2022), ICC 2022, and IPSS-R hematopathology guidelines.
-    """
+    """Numerical analyzer that returns pattern-level flags rather than autonomous diagnoses."""
 
-    # High-risk AML-defining cytogenetic abnormalities (WHO 2022 defines AML regardless of blast count >= 20%)
-    AML_DEFINING_MUTATIONS = [
-        "PML::RARA", "PML-RARA", "t(15;17)",
-        "RUNX1::RUNX1T1", "RUNX1-RUNX1T1", "t(8;21)",
-        "CBFB::MYH11", "CBFB-MYH11", "inv(16)", "t(16;16)",
-        "KMT2A", "t(9;11)", "MECOM", "inv(3)", "t(3;3)",
-        "NUP98", "NPM1"
-    ]
+    AML_GENETIC_ALIASES = {
+        "PML::RARA": ("pml::rara", "pml-rara", "t(15;17)"),
+        "RUNX1::RUNX1T1": ("runx1::runx1t1", "runx1-runx1t1", "t(8;21)"),
+        "CBFB::MYH11": ("cbfb::myh11", "cbfb-myh11", "inv(16)", "t(16;16)"),
+        "KMT2A rearrangement": ("kmt2a", "mll rearrangement", "t(9;11)"),
+        "DEK::NUP214": ("dek::nup214", "dek-nup214", "t(6;9)"),
+        "MECOM rearrangement": ("mecom", "inv(3)", "t(3;3)"),
+        "NUP98 rearrangement": ("nup98",),
+        "NPM1 mutation": ("npm1",),
+        "CEBPA mutation": ("cebpa",),
+        "BCR::ABL1": ("bcr::abl1", "bcr-abl1", "t(9;22)"),
+    }
 
     @staticmethod
     def calculate_me_ratio(granulocytic_count: int, erythroid_count: int) -> float:
-        """Calculates Myeloid-to-Erythroid ratio."""
         if erythroid_count == 0:
-            return float("inf") if granulocytic_count > 0 else 0.0
+            return float("inf") if granulocytic_count else 0.0
         return round(granulocytic_count / erythroid_count, 2)
 
     @classmethod
+    def _detect_aml_genetics(cls, findings: List[str]) -> List[str]:
+        detected = []
+        for raw in findings:
+            value = raw.strip().lower()
+            if any(term in value for term in ("negative", "not detected", "wild type", "wild-type")):
+                continue
+            for canonical, aliases in cls.AML_GENETIC_ALIASES.items():
+                if canonical not in detected and any(alias in value for alias in aliases):
+                    detected.append(canonical)
+        return detected
+
+    @staticmethod
+    def _ipss_r_blast_stratum(blast_pct: float) -> str:
+        if blast_pct <= 2:
+            return "<= 2% (IPSS-R blast score: 0)"
+        if blast_pct < 5:
+            return "> 2% to < 5% (IPSS-R blast score: 1)"
+        if blast_pct <= 10:
+            return "5% to 10% (IPSS-R blast score: 2)"
+        return "> 10% (IPSS-R blast score: 3)"
+
+    @classmethod
     def analyze(cls, case: ClinicalCaseInput) -> BoneMarrowReport:
-        """Executes full diagnostic and numerical synthesis on bone marrow data."""
-        validation_issues = case.counts.validate()
-        total_counted = case.counts.total_count()
-        blast_pct = case.counts.blast_percentage()
-        non_erythroid_blast_pct = case.counts.non_erythroid_blast_percentage()
+        if not case.case_id.strip():
+            raise ValueError("case_id must not be empty")
+        if not 0 <= case.peripheral_blood_blast_pct <= 100:
+            raise ValueError("peripheral_blood_blast_pct must be between 0 and 100")
+        if case.peripheral_blood_monocyte_abs_k_ul < 0:
+            raise ValueError("peripheral_blood_monocyte_abs_k_ul must be non-negative")
+
+        count_issues = case.counts.validate()
+        dysplasia_issues = case.dysplasia.validate()
+        fatal = [
+            issue for issue in count_issues + dysplasia_issues
+            if issue.startswith(("Count for", "Negative count", "Total nucleated", "erythroid_", "granulocytic_", "megakaryocytic_", "ring_sideroblasts_"))
+        ]
+        if fatal:
+            raise ValueError("; ".join(fatal))
+        adequacy_notes = [f"Validation notice: {issue}" for issue in count_issues]
+
+        total = case.counts.total_count()
+        blast = case.counts.blast_percentage()
+        non_erythroid_blast = case.counts.non_erythroid_blast_percentage()
         me_ratio = case.counts.myeloid_to_erythroid_ratio()
         percentages = case.counts.percentages()
+        cellularity = CellularityAssessment(case.patient_age, case.core_cellularity_pct)
+        dysplasia_degree = case.dysplasia.get_dysplasia_degree()
+        dysplasia_count = case.dysplasia.dysplastic_lineages_count()
+        aml_genetics = cls._detect_aml_genetics(case.cytogenetics_or_mutations)
 
-        cellularity = CellularityAssessment(
-            patient_age=case.patient_age,
-            observed_cellularity_pct=case.core_cellularity_pct
-        )
+        matched: List[str] = []
+        alerts: List[str] = []
+        advisories: List[str] = adequacy_notes
+        limitations = [
+            "This output is an interpretation aid, not a standalone diagnosis or treatment recommendation.",
+            "MDS classification requires documented cytopenia plus appropriate exclusions and integrated findings.",
+            "WHO-HAEM5 and ICC 2022 differ for several AML/MDS entities and blast thresholds.",
+            "The IPSS-R blast stratum is only one component of IPSS-R and applies after MDS is established.",
+        ]
+        primary = "No major numerical abnormality detected"
+        detail = "No disease-level diagnosis assigned from the entered variables"
+        who5 = "No WHO-HAEM5 disease entity assigned from the available data."
+        icc = "No ICC 2022 disease entity assigned from the available data."
 
-        dysp = case.dysplasia
-        dysplasia_degree = dysp.get_dysplasia_degree()
-        dysp_count = dysp.dysplastic_lineages_count()
-
-        # Check for AML-defining genetic abnormalities
-        aml_defining_genetics = []
-        for mut in case.cytogenetics_or_mutations:
-            for aml_def in cls.AML_DEFINING_MUTATIONS:
-                if aml_def.lower() in mut.lower():
-                    aml_defining_genetics.append(mut)
-
-        criteria_matched = []
-        critical_alerts = []
-        advisories = []
-
-        # Check validation warnings
-        for issue in validation_issues:
-            advisories.append(f"Validation Notice: {issue}")
-
-        # Determine Primary Category & Subclassification
-        primary_diag = "Unclassified / Reactive"
-        subclass = "Pending comprehensive correlation"
-
-        # 1. ACUTE MYELOID LEUKEMIA (AML)
-        if blast_pct >= 20.0 or case.peripheral_blood_blast_pct >= 20.0:
-            primary_diag = "Acute Myeloid Leukemia (AML)"
-            criteria_matched.append(f"Blasts >= 20% (Bone Marrow: {blast_pct}%, PB: {case.peripheral_blood_blast_pct}%)")
-            critical_alerts.append("CRITICAL: Blasts >= 20% confirms Acute Leukemia / AML threshold.")
-            if aml_defining_genetics:
-                subclass = f"AML with recurrent genetic abnormalities ({', '.join(aml_defining_genetics)})"
-                criteria_matched.append(f"Recurrent genetics: {aml_defining_genetics}")
-            elif dysp_count >= 2:
-                subclass = "AML with Myelodysplasia-Related Gene Mutations / Cytogenetics (AML-MR)"
-                criteria_matched.append(f"Multilineage dysplasia ({dysp_count} lineages) with blast crisis")
+        pb_blast = case.peripheral_blood_blast_pct
+        if blast >= 20 or pb_blast >= 20:
+            primary = "Acute leukemia blast threshold met"
+            detail = "Blasts >=20%; lineage assignment and full acute-leukemia classification are required"
+            matched.append(f"Blast threshold >=20% (marrow {blast:.2f}%; peripheral blood {pb_blast:.2f}%).")
+            alerts.append("Blasts meet the conventional >=20% acute-leukemia threshold; prompt specialist review is warranted.")
+            who5 = ">=20% blasts supports acute-leukemia classification, subject to lineage and entity-specific criteria."
+            icc = ">=20% blasts supports AML when myeloid lineage and entity criteria are established."
+            if aml_genetics:
+                matched.append("AML-associated defining genetic finding(s): " + ", ".join(aml_genetics))
+        elif aml_genetics:
+            primary = "AML-defining genetic abnormality flag"
+            detail = "Apply the exact entity-specific WHO-HAEM5 or ICC blast threshold"
+            matched.append("Entered AML-associated genetic finding(s): " + ", ".join(aml_genetics))
+            alerts.append("An AML-associated defining genetic abnormality was entered; criteria differ by entity and classification system.")
+            who5 = "Several genetically defined AML entities can be classified below the traditional 20% blast threshold; review the exact entity."
+            icc = "Most recurrent genetic AML entities use a >=10% blast threshold, with important entity-specific exceptions."
+        elif 10 <= blast < 20 or 5 <= pb_blast < 20 or case.dysplasia.auer_rods_present:
+            primary = "Increased-blast myeloid neoplasm pattern"
+            detail = "WHO-HAEM5 MDS-IB2 range / ICC MDS/AML range only if MDS prerequisites are satisfied"
+            matched.append(f"Marrow blasts {blast:.2f}%, PB blasts {pb_blast:.2f}%" + ("; Auer rods entered" if case.dysplasia.auer_rods_present else ""))
+            advisories.append("MDS/MDS-AML cannot be assigned from blast count alone; document cytopenia, exclusions and genomic context.")
+            who5 = "Values are in the MDS-IB2 range if MDS diagnostic prerequisites and exclusions are satisfied."
+            icc = "10-19% blasts are in the MDS/AML range when AML-defining genetics are absent and MDS criteria are otherwise met."
+        elif 5 <= blast < 10 or 2 <= pb_blast < 5:
+            primary = "Increased-blast marrow pattern"
+            detail = "WHO-HAEM5 MDS-IB1 / ICC excess-blast range only if MDS prerequisites are satisfied"
+            matched.append(f"Marrow blasts {blast:.2f}%, PB blasts {pb_blast:.2f}%")
+            advisories.append("Document cytopenia and exclude mimics before assigning an MDS diagnosis.")
+            who5 = "Values are in the MDS-IB1 range if the complete MDS prerequisites are satisfied."
+            icc = "Values may fit an MDS excess-blast category if the complete MDS criteria are met."
+        elif dysplasia_count:
+            primary = "Significant marrow dysplasia pattern"
+            detail = f"Dysplasia >=10% in {dysplasia_count} lineage(s); MDS requires additional prerequisites"
+            matched.append(
+                f"Dysplasia: erythroid {case.dysplasia.erythroid_dysplasia_pct:.1f}%, "
+                f"granulocytic {case.dysplasia.granulocytic_dysplasia_pct:.1f}%, "
+                f"megakaryocytic {case.dysplasia.megakaryocytic_dysplasia_pct:.1f}%"
+            )
+            if case.cytopenia_documented is True:
+                advisories.append("Cytopenia is documented; correlate with persistence, exclusions, full morphology and genomic findings.")
             else:
-                subclass = "AML, Not Otherwise Specified (AML-NOS)"
-
-        elif aml_defining_genetics and (blast_pct >= 10.0 or case.peripheral_blood_blast_pct >= 10.0 or any("PML" in g or "t(15;17)" in g for g in aml_defining_genetics)):
-            primary_diag = "Acute Myeloid Leukemia (AML) by Defining Genetics"
-            subclass = f"AML defined by recurrent genetic abnormality: {', '.join(aml_defining_genetics)}"
-            criteria_matched.append(f"WHO 2022 / ICC: AML diagnosed with recurrent abnormality ({aml_defining_genetics}) despite blasts {blast_pct}%")
-            critical_alerts.append("CRITICAL: AML-defining genetic lesion identified.")
-
-        # 2. MYELODYSPLASTIC NEOPLASMS (MDS) / MDS-IB / MDS-LB
-        elif (5.0 <= blast_pct < 20.0) or (2.0 <= case.peripheral_blood_blast_pct < 20.0) or dysp.auer_rods_present:
-            primary_diag = "Myelodysplastic Neoplasm (MDS) with Increased Blasts"
-            if blast_pct >= 10.0 or case.peripheral_blood_blast_pct >= 5.0 or dysp.auer_rods_present:
-                subclass = "MDS with Increased Blasts 2 (MDS-IB2 / ICC: MDS with Excess Blasts 2)"
-                criteria_matched.append(f"Blasts 10-19% in marrow ({blast_pct}%) or 5-19% in PB ({case.peripheral_blood_blast_pct}%) or Auer rods present")
+                advisories.append("Dysplasia alone is not sufficient for MDS; document cytopenia and exclude secondary causes.")
+            who5 = "Morphologic MDS categories require integrated cytopenia, dysplasia, blast assessment and exclusions."
+            icc = "MDS classification similarly requires integrated clinical, morphologic and genetic assessment."
+        elif percentages.get("plasma_cells", 0) >= 10:
+            plasma = percentages["plasma_cells"]
+            primary = "Marrow plasmacytosis"
+            detail = (
+                "Marked plasmacytosis (>=60%); the IMWG biomarker requires clonal plasma cells"
+                if plasma >= 60 else
+                "Plasma cells >=10%; clonality and myeloma-defining events are required for disease classification"
+            )
+            matched.append(f"Marrow plasma cells {plasma:.2f}%")
+            if case.plasma_cell_clonality_documented and case.myeloma_defining_event_documented:
+                primary = "Plasma cell neoplasm criteria documented"
+                detail = "Entered context includes clonality and a myeloma-defining event; verify the complete IMWG criteria"
             else:
-                subclass = "MDS with Increased Blasts 1 (MDS-IB1 / ICC: MDS with Excess Blasts 1)"
-                criteria_matched.append(f"Blasts 5-9% in marrow ({blast_pct}%) or 2-4% in PB ({case.peripheral_blood_blast_pct}%)")
-            critical_alerts.append(f"ELEVATED BLASTS: {blast_pct}% marrow blasts indicates high-risk MDS/advanced myeloid neoplasm.")
-
-        elif dysp_count >= 1:
-            primary_diag = "Myelodysplastic Neoplasm (MDS)"
-            # Check for isolated del(5q)
-            is_del5q = any("5q" in g.lower() or "del(5q)" in g.lower() for g in case.cytogenetics_or_mutations)
-            is_sf3b1 = dysp.sf3b1_mutation_detected or any("sf3b1" in g.lower() for g in case.cytogenetics_or_mutations)
-
-            if is_del5q and blast_pct < 5.0 and case.peripheral_blood_blast_pct < 2.0:
-                subclass = "MDS with isolated del(5q)"
-                criteria_matched.append("del(5q) cytogenetics with blasts < 5%")
-            elif (dysp.ring_sideroblasts_pct >= 15.0 or (is_sf3b1 and dysp.ring_sideroblasts_pct >= 5.0)) and blast_pct < 5.0:
-                subclass = "MDS with Ring Sideroblasts (MDS-RS / MDS-SF3B1)"
-                criteria_matched.append(f"Ring sideroblasts {dysp.ring_sideroblasts_pct}% (SF3B1: {is_sf3b1}) with blasts < 5%")
-            elif dysp_count >= 2:
-                subclass = "MDS with Multilineage Dysplasia (MDS-MLD / MDS-LB with MLD)"
-                criteria_matched.append(f"Dysplasia >=10% in {dysp_count} lineages (Erythroid: {dysp.erythroid_dysplasia_pct}%, Granulocytic: {dysp.granulocytic_dysplasia_pct}%, Megakaryocytic: {dysp.megakaryocytic_dysplasia_pct}%)")
+                advisories.append("Do not diagnose multiple myeloma from the differential percentage alone; establish clonality and CRAB/SLiM criteria.")
+            who5 = icc = "Plasma-cell classification requires integrated clonality and clinical criteria beyond the differential count."
+        elif cellularity.status == CellularityStatus.SEVERELY_HYPOCELLULAR and blast < 5:
+            primary = "Severe marrow hypocellularity"
+            if case.aplastic_anemia_pb_criteria_documented is True:
+                detail = "Aplastic-anemia-compatible pattern; alternative causes still require exclusion"
+                matched.append("Severe hypocellularity plus entered peripheral-blood aplastic-anemia criteria")
             else:
-                subclass = "MDS with Single Lineage Dysplasia (MDS-SLD / MDS-LB with SLD)"
-                criteria_matched.append("Dysplasia >=10% restricted to 1 lineage with blasts < 5%")
+                detail = "Aplastic anemia cannot be assigned without peripheral-blood criteria and exclusion of alternatives"
+                matched.append(f"Core cellularity {cellularity.observed_cellularity_pct:.1f}%")
+            advisories.append("Correlate with CBC/reticulocytes, exposure history, infection, PNH testing and full marrow review as indicated.")
+            who5 = icc = "A marrow-failure pattern is present; aplastic anemia is clinicopathologic and is not established by cellularity alone."
 
-        # 3. CHRONIC MYELOMONOCYTIC LEUKEMIA (CMML)
-        elif (case.counts.monocytes / max(1, total_counted) >= 0.10 or case.peripheral_blood_monocyte_abs_k_ul >= 1.0) and blast_pct < 20.0:
-            if case.counts.monocytes / max(1, total_counted) >= 0.10:
-                primary_diag = "Myelodysplastic / Myeloproliferative Neoplasm (MDS/MPN)"
-                subclass = "Chronic Myelomonocytic Leukemia (CMML) Pattern"
-                criteria_matched.append(f"Monocytosis >= 10% in marrow differential ({percentages.get('monocytes', 0)}%)")
-                advisories.append("Correlate with absolute persistent peripheral blood monocytosis >= 1.0 x 10^9/L.")
+        if case.persistent_pb_monocytosis_documented is True and case.peripheral_blood_monocyte_abs_k_ul >= 0.5:
+            advisories.append("Persistent absolute PB monocytosis >=0.5 x10^9/L is entered; CMML assessment also requires >=10% PB monocytes and supporting/clonal and exclusion criteria.")
 
-        # 4. PLASMA CELL NEOPLASMS
-        elif percentages.get("plasma_cells", 0.0) >= 10.0:
-            primary_diag = "Plasma Cell Neoplasm"
-            pct_plasma = percentages.get("plasma_cells", 0.0)
-            if pct_plasma >= 60.0:
-                subclass = "Multiple Myeloma (Myeloma-defining biomarker: Plasma cells >= 60%)"
-                criteria_matched.append(f"Marrow plasmacytosis >= 60% ({pct_plasma}%)")
-                critical_alerts.append("CRITICAL: Plasma cells >= 60% meets SLiM-CRAB criteria for Multiple Myeloma.")
-            else:
-                subclass = f"Plasma Cell Myeloma / MGUS (Plasma cells: {pct_plasma}%)"
-                criteria_matched.append(f"Bone marrow plasma cells {pct_plasma}% (threshold >= 10%)")
-                advisories.append("Evaluate CRAB criteria (Hypercalcemia, Renal failure, Anemia, Bone lytic lesions) and Serum Free Light Chains.")
+        if primary == "No major numerical abnormality detected":
+            if me_ratio > 4.5:
+                primary = "Myeloid-predominant differential pattern"
+                detail = f"Elevated M:E ratio ({me_ratio}:1); correlate with morphology and clinical context"
+                matched.append(f"M:E ratio {me_ratio}:1")
+            elif 0 < me_ratio < 1.2:
+                primary = "Erythroid-predominant differential pattern"
+                detail = f"Low/inverted M:E ratio ({me_ratio}:1); correlate with erythropoietic response and context"
+                matched.append(f"M:E ratio {me_ratio}:1")
 
-        # 5. REACTIVE / PHYSIOLOGICAL / APLASTIC PATTERNS
-        elif cellularity.status == CellularityStatus.SEVERELY_HYPOCELLULAR and blast_pct < 5.0 and dysp_count == 0:
-            primary_diag = "Bone Marrow Failure Syndrome"
-            subclass = "Aplastic Anemia / Severe Hypoplasia"
-            criteria_matched.append(f"Severe hypocellularity ({cellularity.observed_cellularity_pct}%) without increased blasts or dysplasia")
-            critical_alerts.append("CRITICAL: Severe marrow hypocellularity. Exclude PNH clone and Fanconi anemia.")
-
-        elif me_ratio > 4.5:
-            primary_diag = "Myeloid Hyperplasia / Shift"
-            subclass = f"Granulocytic Hyperplasia (M:E Ratio: {me_ratio}:1, normal 1.5-3.5:1)"
-            criteria_matched.append(f"Elevated M:E ratio ({me_ratio}:1) with normal blast percentage ({blast_pct}%)")
-            advisories.append("Assess for underlying leukemoid reaction, systemic bacterial infection, G-CSF administration, or early CML (test BCR-ABL1).")
-
-        elif me_ratio < 1.2 and me_ratio > 0:
-            primary_diag = "Erythroid Hyperplasia"
-            subclass = f"Erythroid Hyperplasia (M:E Ratio: {me_ratio}:1, inverted)"
-            criteria_matched.append(f"Inverted/decreased M:E ratio ({me_ratio}:1) showing erythroid predominance")
-            advisories.append("Assess for hemolytic anemia, blood loss recovery, erythropoietin therapy, or thalassemia.")
-
-        else:
-            primary_diag = "Normocellular / Unremarkable Bone Marrow"
-            subclass = "Morphologically within normal age-adjusted reference ranges"
-            criteria_matched.append(f"Normocellular marrow, normal M:E ratio ({me_ratio}:1), blasts < 5% ({blast_pct}%)")
-
-        # IPSS-R Blast Category
-        if blast_pct <= 2.0:
-            ipss_r_blast = "<= 2% (IPSS-R Score: 0)"
-        elif blast_pct > 2.0 and blast_pct < 5.0:
-            ipss_r_blast = "> 2% to < 5% (IPSS-R Score: 1)"
-        elif 5.0 <= blast_pct <= 10.0:
-            ipss_r_blast = "5% to 10% (IPSS-R Score: 2)"
-        else:
-            ipss_r_blast = "> 10% (IPSS-R Score: 3)"
-
-        # Iron stain correlation
-        if case.iron_store_grade is not None:
-            if case.iron_store_grade in (IronStoreGrade.GRADE_0, IronStoreGrade.GRADE_1):
-                advisories.append(f"Iron Stores: Grade {case.iron_store_grade.value} (Depleted/Severely Decreased). Suggests iron deficiency.")
-            elif case.iron_store_grade in (IronStoreGrade.GRADE_5, IronStoreGrade.GRADE_6):
-                advisories.append(f"Iron Stores: Grade {case.iron_store_grade.value} (Markedly Increased). Correlate with transfusion history / hemochromatosis.")
+        if case.dysplasia.ring_sideroblasts_pct >= 15:
+            advisories.append(
+                f"Ring sideroblasts {case.dysplasia.ring_sideroblasts_pct:.1f}% entered. "
+                "WHO-HAEM5/ICC SF3B1- and ring-sideroblast-associated categories require integrated context."
+            )
+        elif case.dysplasia.sf3b1_mutation_detected:
+            advisories.append("SF3B1 mutation entered; classification requires additional morphologic/genetic prerequisites and exclusions.")
+        if case.iron_store_grade in (IronStoreGrade.GRADE_0, IronStoreGrade.GRADE_1):
+            advisories.append("Stainable iron is entered as absent/severely decreased; correlate with systemic iron studies.")
+        elif case.iron_store_grade in (IronStoreGrade.GRADE_5, IronStoreGrade.GRADE_6):
+            advisories.append("Stainable iron is entered as markedly increased; correlate with transfusion history and systemic iron studies.")
 
         return BoneMarrowReport(
-            case_id=case.case_id,
-            patient_age=case.patient_age,
-            total_cells_counted=total_counted,
-            marrow_blast_pct=blast_pct,
-            non_erythroid_blast_pct=non_erythroid_blast_pct,
-            me_ratio=me_ratio,
-            cellularity=cellularity,
-            dysplasia_degree=dysplasia_degree,
-            dysplastic_lineages_count=dysp_count,
-            primary_diagnostic_category=primary_diag,
-            subclassification=subclass,
-            who_2022_criteria_matched=criteria_matched,
-            ipss_r_blast_score_category=ipss_r_blast,
-            critical_alerts=critical_alerts,
-            advisory_recommendations=advisories,
-            differential_percentages=percentages
+            case.case_id, case.patient_age, total, blast, non_erythroid_blast, me_ratio,
+            cellularity, dysplasia_degree, dysplasia_count, primary, detail, matched,
+            cls._ipss_r_blast_stratum(blast), alerts, advisories, percentages,
+            who5, icc, limitations,
         )
 
 
 def format_clinical_report(report: BoneMarrowReport) -> str:
-    """Formats the BoneMarrowReport into a clean, legible clinical text summary."""
-    lines = []
-    lines.append("=" * 78)
-    lines.append(f" BONE MARROW DIFFERENTIAL & HISTOPATHOLOGY REPORT : {report.case_id}")
-    lines.append("=" * 78)
-    lines.append(f"Patient Age: {report.patient_age} yrs | Total Counted: {report.total_cells_counted} cells")
-    lines.append(f"Marrow Blast %: {report.marrow_blast_pct:.2f}% | Non-Erythroid Blast %: {report.non_erythroid_blast_pct:.2f}%")
-    lines.append(f"Myeloid:Erythroid (M:E) Ratio: {report.me_ratio:.2f}:1")
-    lines.append(f"Core Cellularity: {report.cellularity.observed_cellularity_pct:.1f}% (Expected: {report.cellularity.expected_cellularity_pct:.1f}%) -> {report.cellularity.status.value}")
-    lines.append(f"Dysplasia Assessment: {report.dysplasia_degree.value} ({report.dysplastic_lineages_count} lineages)")
-    lines.append(f"IPSS-R Blast Stratum: {report.ipss_r_blast_score_category}")
-    lines.append("-" * 78)
-    lines.append(f"PRIMARY DIAGNOSIS: {report.primary_diagnostic_category}")
-    lines.append(f"SUBCLASSIFICATION: {report.subclassification}")
-    lines.append("-" * 78)
-
+    ratio = "inf" if report.me_ratio == float("inf") else f"{report.me_ratio:.2f}"
+    lines = [
+        "=" * 78,
+        f" BONE MARROW DIFFERENTIAL ANALYSIS : {report.case_id}",
+        " Interpretation aid — not a standalone diagnosis or treatment recommendation",
+        "=" * 78,
+        f"Patient age: {report.patient_age} yrs | Total counted: {report.total_cells_counted} cells",
+        f"Marrow blasts: {report.marrow_blast_pct:.2f}% | Non-erythroid blasts: {report.non_erythroid_blast_pct:.2f}%",
+        f"Myeloid:Erythroid (M:E) ratio: {ratio}:1",
+        f"Core cellularity: {report.cellularity.observed_cellularity_pct:.1f}% (approx. age reference {report.cellularity.expected_cellularity_pct:.1f}%) -> {report.cellularity.status.value}",
+        f"Dysplasia: {report.dysplasia_degree.value} ({report.dysplastic_lineages_count} lineage(s))",
+        f"IPSS-R blast stratum (reference only): {report.ipss_r_blast_score_category}",
+        "-" * 78,
+        f"INTERPRETIVE CATEGORY: {report.primary_diagnostic_category}",
+        f"DETAIL: {report.subclassification}",
+        f"WHO-HAEM5: {report.who5_interpretation}",
+        f"ICC 2022: {report.icc2022_interpretation}",
+        "-" * 78,
+    ]
     if report.who_2022_criteria_matched:
-        lines.append("Diagnostic Criteria Matched:")
-        for crit in report.who_2022_criteria_matched:
-            lines.append(f"  - {crit}")
-
+        lines += ["Entered findings / thresholds:"] + [f"  - {x}" for x in report.who_2022_criteria_matched]
     if report.critical_alerts:
-        lines.append("\n[!] CRITICAL PATHOLOGY ALERTS:")
-        for alert in report.critical_alerts:
-            lines.append(f"  * {alert}")
-
+        lines += ["\nReview flags:"] + [f"  * {x}" for x in report.critical_alerts]
     if report.advisory_recommendations:
-        lines.append("\n[*] CLINICAL ADVISORIES & RECOMMENDATIONS:")
-        for adv in report.advisory_recommendations:
-            lines.append(f"  * {adv}")
-
-    lines.append("\nCELL DIFFERENTIAL BREAKDOWN (%):")
+        lines += ["\nCorrelation notes:"] + [f"  * {x}" for x in report.advisory_recommendations]
+    lines.append("\nDifferential (%):")
     for cell_type, pct in report.differential_percentages.items():
         if pct > 0:
             lines.append(f"  - {cell_type.replace('_', ' ').title():<32}: {pct:>6.2f}%")
-
-    lines.append("=" * 78)
+    lines += ["\nLimitations:"] + [f"  * {x}" for x in report.interpretation_limitations] + ["=" * 78]
     return "\n".join(lines)
