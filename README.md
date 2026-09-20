@@ -1,5 +1,7 @@
 # Bone Marrow Differential
 
+### [Open the Live Application →](https://abusuraihsakhri.github.io/bone-marrow-differential-agent/)
+
 Bone marrow aspirate differential calculator and conservative hematopathology interpretation aid. It computes cell percentages, marrow and non-erythroid blast percentages, the myeloid:erythroid ratio, an approximate age-referenced cellularity description, and pattern-level review flags from entered data.
 
 The project deliberately does **not** treat a differential count as a complete diagnosis. MDS, CMML, plasma-cell neoplasms, aplastic anemia, and genetically defined AML entities require clinical, hematologic, morphologic, cytogenetic, and/or molecular information beyond the fields represented here.
@@ -15,7 +17,7 @@ The project deliberately does **not** treat a differential count as a complete d
 
 ## Browser application
 
-GitHub Pages deployment is automated from `master` by `.github/workflows/pages.yml`. The live link is added here only after the deployed URL has been verified.
+GitHub Pages deployment is automated from `master` by `.github/workflows/pages.yml`.
 
 The browser downloads Pyodide and `bone_marrow_differential.py`, then performs analysis locally. Case inputs are not sent to this repository or to an application backend. The interface stores only the selected light/dark theme in browser local storage.
 
