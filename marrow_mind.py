@@ -1,31 +1,29 @@
-"""
-MarrowMind Compatibility Interface
-===================================
-Exports core bone marrow differential functionality and backward-compatible wrappers.
-"""
+"""Backward-compatible imports for the maintained marrow differential engine."""
 
 from bone_marrow_differential import (
     BoneMarrowCellCounts,
+    BoneMarrowDifferentialAnalyzer,
+    BoneMarrowReport,
     CellularityAssessment,
     CellularityStatus,
-    DysplasiaFeatures,
-    DysplasiaDegree,
-    IronStoreGrade,
     ClinicalCaseInput,
-    BoneMarrowReport,
-    BoneMarrowDifferentialAnalyzer,
+    DysplasiaDegree,
+    DysplasiaFeatures,
+    IronStoreGrade,
+    Lineage,
     format_clinical_report,
 )
 
 __all__ = [
     "BoneMarrowCellCounts",
+    "BoneMarrowDifferentialAnalyzer",
+    "BoneMarrowReport",
     "CellularityAssessment",
     "CellularityStatus",
-    "DysplasiaFeatures",
-    "DysplasiaDegree",
-    "IronStoreGrade",
     "ClinicalCaseInput",
-    "BoneMarrowReport",
-    "BoneMarrowDifferentialAnalyzer",
+    "DysplasiaDegree",
+    "DysplasiaFeatures",
+    "IronStoreGrade",
+    "Lineage",
     "format_clinical_report",
 ]

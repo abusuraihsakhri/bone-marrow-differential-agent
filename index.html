@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="description" content="Bone marrow differential calculator and conservative hematopathology interpretation aid running locally in the browser.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' https://cdn.jsdelivr.net 'wasm-unsafe-eval'; style-src 'self'; connect-src 'self' https://cdn.jsdelivr.net; img-src 'self' data:; worker-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'">
+  <title>Bone Marrow Differential</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="https://cdn.jsdelivr.net/pyodide/v314.0.7/full/pyodide.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand">
+        <div class="brand-mark" aria-hidden="true">BM</div>
+        <div><h1>Bone Marrow Differential</h1><p>Calculation &amp; interpretation aid</p></div>
+      </div>
+      <div class="header-actions">
+        <div class="runtime" id="runtimeStatus" role="status" aria-live="polite"><span class="runtime-dot" aria-hidden="true"></span><span>Loading Python…</span></div>
+        <button class="icon-button" id="themeToggle" type="button" aria-label="Switch theme" title="Switch theme"><span id="themeIcon" aria-hidden="true">☾</span></button>
+      </div>
+    </header>
+    <main class="workspace">
+      <section class="panel input-panel" aria-labelledby="inputHeading">
+        <div class="panel-head">
+          <div><span class="eyebrow">Case input</span><h2 id="inputHeading">Marrow differential</h2></div>
+          <div class="panel-tools"><button class="button ghost compact" type="button" id="demoButton">Demo</button><button class="button ghost compact" type="button" id="clearButton">Clear</button></div>
+        </div>
+        <div class="segmented" role="tablist" aria-label="Input sections">
+          <button class="segment active" type="button" role="tab" aria-selected="true" data-input-tab="counts">Differential</button>
+          <button class="segment" type="button" role="tab" aria-selected="false" data-input-tab="context">Context</button>
+        </div>
+        <form id="caseForm" novalidate>
+          <div class="tab-pane active" data-input-pane="counts">
+            <div class="core-grid">
+              <label class="field"><span>Case ID</span><input id="case_id" name="case_id" type="text" maxlength="80" value="CASE-001" autocomplete="off"></label>
+              <label class="field"><span>Age (years)</span><input id="patient_age" name="patient_age" type="number" min="0" max="125" step="1" value="50" inputmode="numeric"></label>
+              <label class="field"><span>Core cellularity (%)</span><input id="core_cellularity_pct" name="core_cellularity_pct" type="number" min="0" max="100" step="0.1" value="50"></label>
+              <label class="field"><span>PB blasts (%)</span><input id="peripheral_blood_blast_pct" name="peripheral_blood_blast_pct" type="number" min="0" max="100" step="0.1" value="0"></label>
+            </div>
+            <div class="section-title-row"><div><h3>Aspirate counts</h3><p>Enter nucleated cells; 500-cell differential preferred when material permits.</p></div><output id="cellTotal" class="total-pill" aria-live="polite">0 cells</output></div>
+            <div class="counts-grid" id="countsGrid">
+              <label class="field mini"><span>Blasts</span><input id="blasts" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Promyelo</span><input id="promyelocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Myelocytes</span><input id="myelocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Metamyelo</span><input id="metamyelocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Bands</span><input id="band_neutrophils" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Segs</span><input id="segmented_neutrophils" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Eosinophils</span><input id="eosinophils" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Basophils</span><input id="basophils" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Monocytes</span><input id="monocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Pronormo</span><input id="pronormoblasts" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Baso normo</span><input id="basophilic_normoblasts" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Poly normo</span><input id="polychromatophilic_normoblasts" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Ortho normo</span><input id="orthochromatophilic_normoblasts" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Lymphocytes</span><input id="lymphocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Plasma cells</span><input id="plasma_cells" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Megakaryocytes</span><input id="megakaryocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Histiocytes</span><input id="histiocytes" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Mast cells</span><input id="mast_cells" type="number" min="0" step="1" value="0"></label>
+              <label class="field mini"><span>Other</span><input id="other_cells" type="number" min="0" step="1" value="0"></label>
+            </div>
+          </div>
+          <div class="tab-pane" data-input-pane="context" hidden>
+            <div class="context-grid">
+              <label class="field"><span>Erythroid dysplasia (%)</span><input id="erythroid_dysplasia_pct" type="number" min="0" max="100" step="0.1" value="0"></label>
+              <label class="field"><span>Granulocytic dysplasia (%)</span><input id="granulocytic_dysplasia_pct" type="number" min="0" max="100" step="0.1" value="0"></label>
+              <label class="field"><span>Megakaryocytic dysplasia (%)</span><input id="megakaryocytic_dysplasia_pct" type="number" min="0" max="100" step="0.1" value="0"></label>
+              <label class="field"><span>Ring sideroblasts (%)</span><input id="ring_sideroblasts_pct" type="number" min="0" max="100" step="0.1" value="0"></label>
+              <label class="field"><span>PB monocytes (×10⁹/L)</span><input id="peripheral_blood_monocyte_abs_k_ul" type="number" min="0" step="0.01" value="0.5"></label>
+              <label class="field"><span>Iron store grade (0–6)</span><input id="iron_store_grade" type="number" min="0" max="6" step="1" value="3"></label>
+            </div>
+            <div class="check-grid">
+              <label class="check"><input id="sf3b1_mutation_detected" type="checkbox"><span>SF3B1 mutation detected</span></label>
+              <label class="check"><input id="auer_rods_present" type="checkbox"><span>Auer rods present</span></label>
+            </div>
+            <label class="field full"><span>Cytogenetics / mutations <small>(semicolon-separated)</small></span><textarea id="genetics" rows="2" placeholder="e.g., NPM1 mutated; FLT3-ITD"></textarea></label>
+            <div class="section-title-row context-title"><div><h3>Diagnostic prerequisites</h3><p>Unknown is safer than assuming absent.</p></div></div>
+            <div class="select-grid">
+              <label class="field"><span>Persistent cytopenia</span><select id="cytopenia_documented"><option value="">Unknown</option><option value="true">Documented</option><option value="false">Not documented</option></select></label>
+              <label class="field"><span>Persistent PB monocytosis</span><select id="persistent_pb_monocytosis_documented"><option value="">Unknown</option><option value="true">Documented</option><option value="false">Not documented</option></select></label>
+              <label class="field"><span>Plasma-cell clonality</span><select id="plasma_cell_clonality_documented"><option value="">Unknown</option><option value="true">Documented</option><option value="false">Not documented</option></select></label>
+              <label class="field"><span>Myeloma-defining event</span><select id="myeloma_defining_event_documented"><option value="">Unknown</option><option value="true">Documented</option><option value="false">Not documented</option></select></label>
+              <label class="field"><span>Aplastic-anemia PB criteria</span><select id="aplastic_anemia_pb_criteria_documented"><option value="">Unknown</option><option value="true">Documented</option><option value="false">Not documented</option></select></label>
+            </div>
+          </div>
+          <div class="form-footer">
+            <p class="privacy-note">Runs locally in your browser. Case data are not uploaded or stored.</p>
+            <button class="button primary" id="analyzeButton" type="submit" disabled><span>Analyze case</span><span aria-hidden="true">→</span></button>
+          </div>
+        </form>
+      </section>
+      <section class="panel result-panel" aria-labelledby="resultHeading">
+        <div class="panel-head"><div><span class="eyebrow">Analysis</span><h2 id="resultHeading">Results</h2></div><button class="button ghost compact" type="button" id="downloadButton" disabled>JSON</button></div>
+        <div id="emptyState" class="empty-state"><div class="empty-icon" aria-hidden="true">∑</div><h3>Ready for a case</h3><p>Enter a marrow differential, then select <strong>Analyze case</strong>. Results use the same Python engine as the CLI.</p></div>
+        <div id="resultContent" class="results" hidden>
+          <div class="metric-grid">
+            <div class="metric"><span>Total counted</span><strong id="metricTotal">—</strong></div>
+            <div class="metric"><span>Marrow blasts</span><strong id="metricBlasts">—</strong></div>
+            <div class="metric"><span>M:E ratio</span><strong id="metricME">—</strong></div>
+            <div class="metric"><span>Cellularity</span><strong id="metricCellularity">—</strong></div>
+          </div>
+          <div class="interpretation-card"><span class="card-label">Interpretive category</span><h3 id="category">—</h3><p id="detail">—</p></div>
+          <div class="standards-grid"><div class="standard-card"><span>WHO-HAEM5</span><p id="whoResult">—</p></div><div class="standard-card"><span>ICC 2022</span><p id="iccResult">—</p></div></div>
+          <div class="result-section" id="flagsSection" hidden><h3>Review flags</h3><ul id="flagsList"></ul></div>
+          <div class="result-section" id="notesSection" hidden><h3>Correlation notes</h3><ul id="notesList"></ul></div>
+          <details class="result-details"><summary>Limitations &amp; differential percentages</summary><div id="limitations"></div><div id="percentages" class="percentages"></div></details>
+        </div>
+        <div id="errorBox" class="error-box" role="alert" hidden></div>
+      </section>
+    </main>
+    <footer class="footer">For research, education, and calculation support. Not a substitute for specialist diagnostic review.</footer>
+  </div>
+</body>
+</html>
